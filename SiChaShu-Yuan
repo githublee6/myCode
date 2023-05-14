@@ -1,0 +1,192 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+typedef enum
+{
+    TRUE = 1,
+    FALSE = 0,
+} Bool;
+#define standard 500     //判断颜色是否足够相近的标准
+typedef struct color
+{
+    unsigned char r;
+    unsigned char g;
+    unsigned char b;
+
+} color;
+color** colors;
+
+//To get ppm image from jpeg file, please visit https://convertio.co/jpg-ppm/
+int readImage(int p, char* inFile, char* outFile) // Note that width == height here
+{
+    FILE* f = fopen(inFile, "rb");
+
+    char u[3]; // placehoder
+    int width, height, max_value;
+    fscanf(f, "%s%d%d%d%c", u, &width, &height, &max_value, &u[0]);
+
+    int i;
+    colors = (color**)malloc(width * sizeof(color*));
+    for (i = 0; i < height; i++)
+        colors[i] = (color*)malloc(width * sizeof(color));
+
+    for (i = 0; i < height; i++)
+        fread(colors[i], sizeof(color), width, f);
+    fclose(f);
+    return width;
+}
+
+void printImage(char* fileName, int width) 
+{
+    FILE* f = fopen(fileName, "wb");
+
+    fprintf(f, "P6\n");
+    fprintf(f, "%d %d\n", width, width);
+    fprintf(f, "255\n");
+
+    int i;
+    for (i = 0; i < width; i++)
+        fwrite(colors[i], sizeof(color), width, f);
+
+    fclose(f);
+}
+typedef struct QUADtree   //建立四叉树
+{
+    int left;
+    int right;
+    int up;
+    int down;
+    struct QUADtree* northeast;
+    struct QUADtree* northwest;
+    struct QUADtree* southwest;
+    struct QUADtree* southeast;
+} QTree;
+int division(int m, int n)    //防止分的四个区域出现重叠
+{
+    if ((m + n) % 2 == 1)
+        return (m + n - 1) / 2;
+    else
+        return (m + n) / 2;
+}
+Bool subdivision(QTree* root)     //判断是否需要继续细分四叉树
+{
+    double gave = 0;
+    double rave = 0;
+    double bave = 0;
+    double rvar = 0;
+    double gvar = 0;
+    double bvar = 0;
+    int sum = (root->up - root->down) * (root->right - root->left);
+    for (int i = root->left; i < root->right; i++)
+        for (int j = root->down; j < root->up; j++)
+        {
+            rave = rave + (int)(colors[j][i].r);
+            gave = gave + (int)(colors[j][i].g);
+            bave = bave + (int)(colors[j][i].b);
+        }
+    rave = rave / sum;
+    gave = gave / sum;
+    bave = bave / sum;
+    for (int i = root->left; i < root->right; i++)
+        for (int j = root->down; j < root->up; j++)
+        {
+            rvar = rvar + (rave - (double)(colors[j][i].r)) * (rave - (double)(colors[j][i].r));
+            gvar = rvar + (gave - (double)(colors[j][i].g)) * (gave - (double)(colors[j][i].g));
+            bvar = bvar + (bave - (double)(colors[j][i].b)) * (bave - (double)(colors[j][i].b));
+        }
+    rvar = rvar / sum;
+    gvar = gvar / sum;
+    bvar = bvar / sum;
+    if (rvar > standard || gvar > standard || bvar > standard)   //如果rgb存在超过标准的数值，细分
+    {
+        QTree* youshang = (QTree*)malloc(sizeof(QTree));
+        youshang->up = root->up;
+        youshang->down = division(root->down, root->up);
+        youshang->left = division(root->left, root->right);
+        youshang->right = root->right;
+        youshang->northeast = NULL;
+        youshang->northwest = NULL;
+        youshang->southwest = NULL;
+        youshang->southeast = NULL;
+        root->northeast = youshang;
+        QTree* zuoshang = (QTree*)malloc(sizeof(QTree));
+        zuoshang->up = root->up;
+        zuoshang->down = division(root->down, root->up);
+        zuoshang->left = root->left;
+        zuoshang->right = division(root->right, root->left);
+        zuoshang->northeast = NULL;
+        zuoshang->northwest = NULL;
+        zuoshang->southwest = NULL;
+        zuoshang->southeast = NULL;
+        root->northwest = zuoshang;
+        QTree* zuoxia = (QTree*)malloc(sizeof(QTree));
+        zuoxia->up = division(root->up, root->down);
+        zuoxia->down = root->down;
+        zuoxia->left = root->left;
+        zuoxia->right = division(root->right, root->left);
+        zuoxia->northeast = NULL;
+        zuoxia->northwest = NULL;
+        zuoxia->southwest = NULL;
+        zuoxia->southeast = NULL;
+        root->southwest = zuoxia;
+        QTree* youxia = (QTree*)malloc(sizeof(QTree));
+        youxia->up = division(root->up, root->down);
+        youxia->down = root->down;
+        youxia->left = division(root->left, root->right);
+        youxia->right = root->right;
+        youxia->northeast = NULL;
+        youxia->northwest = NULL;
+        youxia->southwest = NULL;
+        youxia->southeast = NULL;
+        root->southeast = youxia;
+        return TRUE;
+    }
+
+    else
+    {
+        for (int i = root->left; i < root->right; i++)
+            for (int j = root->down; j < root->up; j++)
+            {
+                colors[j][i].b = bave;
+                colors[j][i].g = gave;
+                colors[j][i].r = rave;
+            }
+
+        return FALSE;
+    }
+}
+void recur(QTree* root)   //递归
+{
+    Bool r = subdivision(root);
+    if (r == FALSE)
+        return;
+    recur(root->northeast);
+    recur(root->northwest);
+    recur(root->southwest);
+    recur(root->southeast);
+}
+void runQTree(int width)   //建立根节点，完全划分
+{
+    QTree* root = (QTree*)malloc(sizeof(QTree));
+    root->down = 0;
+    root->left = 0;
+    root->right = width;
+    root->up = width;
+    root->northeast = NULL;
+    root->northwest = NULL;
+    root->southwest = NULL;
+    root->southeast = NULL;
+    recur(root);
+}
+int main()     //主函数
+{
+    int tolerance = 0;
+    char* inFile = "D:/D_codeFile/code_c/C_Single/shiYan/3-4ChaShu/a.ppm";
+    char* outFile = "D:/D_codeFile/code_c/C_Single/shiYan/3-4ChaShu/out.ppm";
+    tolerance = atoi("5");
+    int a = readImage(tolerance, inFile, outFile);
+    runQTree(a);
+    printImage(outFile, a);
+    return 0;
+}
