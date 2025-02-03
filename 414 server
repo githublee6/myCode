@@ -1,0 +1,132 @@
+from datetime import datetime, timedelta
+import requests as req
+import multiprocessing
+import sys
+
+
+nameDir ={
+    'jyh': '100636426',
+    'tys': '100636430',
+    'wcq': '100637880',
+    'zhy': '100638148',
+    'wbh': '100638035',
+    'lk' : '100638084',
+    'lhy': '100638195',
+    'ztr': '100637778',
+}
+# 这里的namedir是翻包翻出来的
+# 这里填3个人， 如 moringMember = ['jyh', 'tys', 'wcq']
+moringMember = ['wcq', 'lk', 'ztr']
+afernoonMember = ['tys', 'lk', 'ztr']
+eveningMember = ['zhy', 'lk', 'ztr']
+# 这里填3个时段房主的ic-cookie值
+ic_cookies = [
+    '304d2779-6e1a-4e14-b077-5292901b5854',
+    '7070ef15-810b-4ff9-b9b2-be8e66eb31b7',
+    '738fbe29-d36b-4ca1-9e32-d7f2947afeac'
+]
+
+
+taskBeginTime = "23:59:55"
+taskEndTime = "00:00:20"
+url = 'https://ic.library.nudt.edu.cn/ic-web/reserve'
+header = {
+    'Host': 'ic.library.nudt.edu.cn',
+    'Content-Length': '322',
+    'Sec-Ch-Ua-Platform': '\"Windows\"',
+    'Sec-Ch-Ua': '\"Microsoft Edge\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"',
+    'Lan': '1',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0',
+    'Accept': 'application/json, text/plain, */*',
+    'Content-Type': 'application/json;charset=UTF-8',
+    'Token': '54f72051631049d492a5a2b99cc88149',
+    'Origin': 'https://ic.library.nudt.edu.cn',
+    'Sec-Fetch-Site': 'same-origin',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Dest': 'empty',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
+    'Priority': 'u=1, i',
+    'Connection': 'close'
+}
+
+
+
+def _createRequest(beginTime: str, endTime: str, member1: str, member2: str, member3: str) -> str:
+    data = ('''{"sysKind":1,"appAccNo":''' +
+            nameDir[member1] +
+            ''',"memberKind":2,"resvBeginTime":"''' +
+            beginTime +
+            '''","resvEndTime":"''' +
+            endTime +
+            '''","testName":"study","resvKind":2,"resvProperty":0,"appUrl":"","resvMember":['''+
+            nameDir[member1] +
+            ',' +
+            nameDir[member2] +
+            ',' +
+            nameDir[member3] +
+            '''],"resvDev":[100475805],"memo":"","captcha":"","addServices":[]}''')
+
+    return data
+
+
+def task(Tasknum: int, beginTime: str, endTime: str, member1: str, member1_ic_cookie: str, member2: str, member3: str, taskEndTime: str="00:00:15"):
+    Cookies = {
+        'utag_main': '',
+        'ic-cookie': member1_ic_cookie
+    }
+    data = _createRequest(beginTime, endTime, member1, member2, member3)
+    now = str(datetime.now().strftime("%H:%M:%S"))
+    flag = False
+
+    while now != taskEndTime:
+        try:
+            post_response = req.post(url, headers=header, cookies=Cookies, data=data)
+            if "新增成功" in post_response.text:
+                print(f"[+] Task{Tasknum} Success!")
+                flag = True
+                break
+
+            else:
+                message = post_response.text[post_response.text.find('\"message'):]
+                message = message[:message.find(',')]
+                print(f"[-] Task{Tasknum} Fail\t ", end='')
+                print(message)
+
+        except Exception as e:
+            print(str(e))
+
+        finally:
+            now = str(datetime.now().strftime("%H:%M:%S"))
+
+    if flag:
+        print(f"Task{Tasknum} 预约成功！")
+    else:
+        print(f"Task{Tasknum} 预约失败，请手动预约！")
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    while True:
+        now = str(datetime.now().strftime("%H:%M:%S"))
+        if now == taskBeginTime:
+            print("[+] 开始任务")
+            reserveDate = str((datetime.now() + timedelta(days=2)).strftime("%Y-%m-%d"))
+            task1 = multiprocessing.Process(target=task, args=(1, reserveDate+" 07:50:00", reserveDate+" 11:50:00", moringMember[0], ic_cookies[0], moringMember[1], moringMember[2], taskEndTime))
+            task2 = multiprocessing.Process(target=task, args=(2, reserveDate+" 14:20:00", reserveDate+" 18:20:00", afernoonMember[0], ic_cookies[1], afernoonMember[1], afernoonMember[2], taskEndTime))
+            task3 = multiprocessing.Process(target=task, args=(3, reserveDate+" 18:50:00", reserveDate+" 22:30:00", eveningMember[0], ic_cookies[2], eveningMember[1], eveningMember[2], taskEndTime))
+            task1.start()
+            task2.start()
+            task3.start()
+            task1.join()
+            task2.join()
+            task3.join()
+            print("[+] 任务结束")
+            break
+
+
+
+
+
+
